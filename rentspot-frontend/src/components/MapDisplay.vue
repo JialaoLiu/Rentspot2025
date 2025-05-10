@@ -1,27 +1,90 @@
 <template>
-  <div class="mt-8 px-4">
-    <h2 class="text-xl font-semibold mb-4 text-gray-800">Map Preview</h2>
-    <div ref="mapContainer" style="width: 600px; height: 400px; margin: 0 auto; border: 1px solid #ccc; border-radius: 8px;" />
-  </div>
+  <div ref="mapContainer" style="width: 100%; height: 100%; border: 1px solid #ccc; border-radius: 8px;"></div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 
-const mapContainer = ref(null)
-let map = null
-let selectedMarker = null
-
-onMounted(() => {
-  if (window.google && window.google.maps) {
-    map = new google.maps.Map(mapContainer.value, {
-      center: { lat: -34.9285, lng: 138.6007 }, // Adelaide
-      zoom: 12
-    })
-  } else {
-    console.error('Google Maps API is not loaded.')
+const props = defineProps({
+  properties: {
+    type: Array,
+    default: () => []
   }
 })
+
+const emit = defineEmits(['marker-click'])
+const mapContainer = ref(null)
+let map = null
+let markers = []
+
+onMounted(() => {
+  // Wait for Google Maps to load
+  const mapCheckInterval = setInterval(() => {
+    if (window.google && window.google.maps) {
+      clearInterval(mapCheckInterval)
+      initMap()
+    }
+  }, 200)
+
+  // Clear interval after 10 seconds (50 * 200ms) to prevent infinite checking
+  setTimeout(() => clearInterval(mapCheckInterval), 10000)
+})
+
+function initMap() {
+  if (!mapContainer.value) return
+  
+  map = new google.maps.Map(mapContainer.value, {
+    center: { lat: -34.9285, lng: 138.6007 }, // Adelaide
+    zoom: 12
+  })
+
+  // Add property markers if available
+  if (props.properties && props.properties.length) {
+    addPropertyMarkers()
+  }
+}
+
+function addPropertyMarkers() {
+  clearMarkers()
+  
+  props.properties.forEach(property => {
+    if (property.lat && property.lng) {
+      const position = {
+        lat: parseFloat(property.lat),
+        lng: parseFloat(property.lng)
+      }
+      
+      const marker = new google.maps.Marker({
+        position,
+        map,
+        title: property.title
+      })
+      
+      // Add click event to marker
+      marker.addListener('click', () => {
+        emit('marker-click', property)
+      })
+      
+      markers.push(marker)
+    }
+  })
+  
+  // If we have markers, fit the map to show all of them
+  if (markers.length > 0) {
+    const bounds = new google.maps.LatLngBounds()
+    markers.forEach(marker => {
+      bounds.extend(marker.getPosition())
+    })
+    map.fitBounds(bounds)
+  }
+}
+
+function clearMarkers() {
+  markers.forEach(marker => {
+    marker.setMap(null)
+  })
+  markers = []
+}
 
 function focusMap(position) {
   if (map) {
@@ -29,18 +92,22 @@ function focusMap(position) {
     map.setZoom(14)
 
     // Remove previous marker if exists
-    if (selectedMarker) {
-      selectedMarker.setMap(null)
-    }
+    clearMarkers()
 
     // Add new marker
-    selectedMarker = new google.maps.Marker({
+    const marker = new google.maps.Marker({
       position,
       map,
-      title: 'Selected Property'
+      title: 'Selected Property',
+      animation: google.maps.Animation.DROP
     })
+    
+    markers.push(marker)
   }
 }
 
-defineExpose({ focusMap })
+defineExpose({ 
+  focusMap,
+  addPropertyMarkers
+})
 </script>
